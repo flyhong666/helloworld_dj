@@ -1,14 +1,14 @@
 package jd_seckill
 
 import (
-	"../common"
-	"../conf"
-	"../service"
 	"errors"
 	"fmt"
 	"github.com/Albert-Zhan/httpc"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/tidwall/gjson"
+	"github.com/unknwon/goconfig"
+	"github.com/ztino/jd_seckill/common"
+	"github.com/ztino/jd_seckill/service"
 	"log"
 	"net/http"
 	"strconv"
@@ -18,15 +18,19 @@ import (
 
 type Seckill struct {
 	client *httpc.HttpClient
-	conf *conf.Config
+	conf *goconfig.ConfigFile
 }
 
-func NewSeckill(client *httpc.HttpClient,conf *conf.Config) *Seckill {
+func NewSeckill(client *httpc.HttpClient,conf *goconfig.ConfigFile) *Seckill {
 	return &Seckill{client: client,conf: conf}
 }
 
+func (this *Seckill) getUserAgent() string {
+	return this.conf.MustValue("config","default_user_agent","")
+}
+
 func (this *Seckill) SkuTitle() (string,error) {
-	skuId:=this.conf.Read("config","sku_id")
+	skuId:=this.conf.MustValue("config","sku_id","")
 	req:=httpc.NewRequest(this.client)
 	resp,body,err:=req.SetUrl(fmt.Sprintf("https://item.jd.com/%s.html",skuId)).SetMethod("get").Send().End()
 	if err!=nil || resp.StatusCode!=http.StatusOK {
@@ -39,15 +43,18 @@ func (this *Seckill) SkuTitle() (string,error) {
 }
 
 func (this *Seckill) MakeReserve() {
+	user:=NewUser(this.client,this.conf)
+	userInfo,_:=user.GetUserInfo()
+	log.Println("用户:"+userInfo)
 	shopTitle,err:=this.SkuTitle()
 	if err!=nil {
 		log.Println("获取商品信息失败")
 	}else{
 		log.Println("商品名称:"+shopTitle)
 	}
-	skuId:=this.conf.Read("config","sku_id")
+	skuId:=this.conf.MustValue("config","sku_id","")
 	req:=httpc.NewRequest(this.client)
-	req.SetHeader("User-Agent",this.conf.Read("config","default_user_agent"))
+	req.SetHeader("User-Agent",this.getUserAgent())
 	req.SetHeader("Referer",fmt.Sprintf("https://item.jd.com/%s.html",skuId))
 	resp,body,err:=req.SetUrl("https://yushou.jd.com/youshouinfo.action?callback=fetchJSON&sku="+skuId+"&_="+strconv.Itoa(int(time.Now().Unix()*1000))).SetMethod("get").Send().End()
 	if err!=nil || resp.StatusCode!=http.StatusOK {
@@ -61,9 +68,9 @@ func (this *Seckill) MakeReserve() {
 }
 
 func (this *Seckill) getSeckillUrl() (string,error) {
-	skuId:=this.conf.Read("config","sku_id")
+	skuId:=this.conf.MustValue("config","sku_id","")
 	req:=httpc.NewRequest(this.client)
-	req.SetHeader("User-Agent",this.conf.Read("config","default_user_agent"))
+	req.SetHeader("User-Agent",this.getUserAgent())
 	req.SetHeader("Host","itemko.jd.com")
 	req.SetHeader("Referer",fmt.Sprintf("https://item.jd.com/%s.html",skuId))
 	url:=""
@@ -74,7 +81,7 @@ func (this *Seckill) getSeckillUrl() (string,error) {
 			break
 		}
 		log.Println("抢购链接获取失败，稍后自动重试")
-		time.Sleep(3*time.Millisecond)
+		time.Sleep(300*time.Millisecond)
 	}
 	//https://divide.jd.com/user_routing?skuId=8654289&sn=c3f4ececd8461f0e4d7267e96a91e0e0&from=pc
 	url=strings.ReplaceAll(url,"divide","marathon")
@@ -95,9 +102,9 @@ func (this *Seckill) RequestSeckillUrl()  {
 		log.Println("商品名称:"+shopTitle)
 	}
 	url,_:=this.getSeckillUrl()
-	skuId:=this.conf.Read("config","sku_id")
+	skuId:=this.conf.MustValue("config","sku_id","")
 	req:=httpc.NewRequest(this.client)
-	req.SetHeader("User-Agent",this.conf.Read("config","default_user_agent"))
+	req.SetHeader("User-Agent",this.getUserAgent())
 	req.SetHeader("Host","marathon.jd.com")
 	req.SetHeader("Referer",fmt.Sprintf("https://item.jd.com/%s.html",skuId))
 	_,_,_=req.SetUrl(url).SetMethod("get").Send().End()
@@ -105,10 +112,10 @@ func (this *Seckill) RequestSeckillUrl()  {
 
 func (this *Seckill) SeckillPage()  {
 	log.Println("访问抢购订单结算页面...")
-	skuId:=this.conf.Read("config","sku_id")
-	seckillNum:=this.conf.Read("config","seckill_num")
+	skuId:=this.conf.MustValue("config","sku_id","")
+	seckillNum:=this.conf.MustValue("config","seckill_num","")
 	req:=httpc.NewRequest(this.client)
-	req.SetHeader("User-Agent",this.conf.Read("config","default_user_agent"))
+	req.SetHeader("User-Agent",this.getUserAgent())
 	req.SetHeader("Host","marathon.jd.com")
 	req.SetHeader("Referer",fmt.Sprintf("https://item.jd.com/%s.html",skuId))
 	_,_,_=req.SetUrl("https://marathon.jd.com/seckill/seckill.action?skuId="+skuId+"&num="+seckillNum+"&rid="+strconv.Itoa(int(time.Now().Unix()))).SetMethod("get").Send().End()
@@ -116,10 +123,10 @@ func (this *Seckill) SeckillPage()  {
 
 func (this *Seckill) SeckillInitInfo() (string,error) {
 	log.Println("获取秒杀初始化信息...")
-	skuId:=this.conf.Read("config","sku_id")
-	seckillNum:=this.conf.Read("config","seckill_num")
+	skuId:=this.conf.MustValue("config","sku_id","")
+	seckillNum:=this.conf.MustValue("config","seckill_num","")
 	req:=httpc.NewRequest(this.client)
-	req.SetHeader("User-Agent",this.conf.Read("config","default_user_agent"))
+	req.SetHeader("User-Agent",this.getUserAgent())
 	req.SetHeader("Host","marathon.jd.com")
 	req.SetData("sku",skuId)
 	req.SetData("num",seckillNum)
@@ -137,14 +144,14 @@ func (this *Seckill) SeckillInitInfo() (string,error) {
 }
 
 func (this *Seckill) SubmitSeckillOrder() bool {
-	eid:=this.conf.Read("config","eid")
-	fp:=this.conf.Read("config","fp")
-	skuId:=this.conf.Read("config","sku_id")
-	seckillNum:=this.conf.Read("config","seckill_num")
-	paymentPwd:=this.conf.Read("account","payment_pwd")
+	eid:=this.conf.MustValue("config","eid","")
+	fp:=this.conf.MustValue("config","fp","")
+	skuId:=this.conf.MustValue("config","sku_id","")
+	seckillNum:=this.conf.MustValue("config","seckill_num","")
+	paymentPwd:=this.conf.MustValue("account","payment_pwd","")
 	initInfo,err:=this.SeckillInitInfo()
 	if err!=nil {
-		log.Println(fmt.Sprintf("抢购失败，无法获取生成订单的基本信息，接口返回:【%s】",err))
+		log.Println(fmt.Sprintf("抢购失败，无法获取生成订单的基本信息，接口返回:【%s】",err.Error()))
 		return false
 	}
 	address:=gjson.Get(initInfo,"addressList").Array()
@@ -154,20 +161,18 @@ func (this *Seckill) SubmitSeckillOrder() bool {
 	invoiceContentType:="-1"
 	invoicePhone:=""
 	invoicePhoneKey:=""
+	invoiceInfo:="false"
 	if isinvoiceInfo {
 		invoiceTitle=gjson.Get(initInfo,"invoiceInfo.invoiceTitle").String()
 		invoiceContentType=gjson.Get(initInfo,"invoiceInfo.invoiceContentType").String()
 		invoicePhone=gjson.Get(initInfo,"invoiceInfo.invoicePhone").String()
 		invoicePhoneKey=gjson.Get(initInfo,"invoiceInfo.invoicePhoneKey").String()
-	}
-	invoiceInfo:="false"
-	if isinvoiceInfo {
 		invoiceInfo="true"
 	}
 	token:=gjson.Get(initInfo,"token").String()
 	log.Println("提交抢购订单...")
 	req:=httpc.NewRequest(this.client)
-	req.SetHeader("User-Agent",this.conf.Read("config","default_user_agent"))
+	req.SetHeader("User-Agent",this.getUserAgent())
 	req.SetHeader("Host","marathon.jd.com")
 	req.SetHeader("Referer",fmt.Sprintf("https://marathon.jd.com/seckill/seckill.action?skuId=%s&num=%s&rid=%d",skuId,seckillNum,int(time.Now().Unix())))
 	req.SetData("skuId",skuId)
@@ -206,18 +211,12 @@ func (this *Seckill) SubmitSeckillOrder() bool {
 	resp,body,err:=req.SetUrl("https://marathon.jd.com/seckillnew/orderService/pc/submitOrder.action?skuId="+skuId).SetMethod("post").Send().End()
 	if err!=nil || resp.StatusCode!=http.StatusOK {
 		log.Println("抢购失败，网络错误")
-		if this.conf.Read("messenger","enable")=="true" && this.conf.Read("messenger","type")=="smtp" {
-			email:=service.NerEmail(this.conf)
-			_=email.SendMail([]string{this.conf.Read("messenger","email")},"茅台抢购通知","抢购失败，网络错误")
-		}
+		_=service.SendMessage(this.conf,"茅台抢购通知","抢购失败，网络错误")
 		return false
 	}
 	if !gjson.Valid(body) {
 		log.Println("抢购失败，返回信息:"+body)
-		if this.conf.Read("messenger","enable")=="true" && this.conf.Read("messenger","type")=="smtp" {
-			email:=service.NerEmail(this.conf)
-			_=email.SendMail([]string{this.conf.Read("messenger","email")},"茅台抢购通知","抢购失败，返回信息:"+body)
-		}
+		_=service.SendMessage(this.conf,"茅台抢购通知","抢购失败，返回信息:"+body)
 		return false
 	}
 	if gjson.Get(body,"success").Bool() {
@@ -225,17 +224,11 @@ func (this *Seckill) SubmitSeckillOrder() bool {
 		totalMoney:=gjson.Get(body,"totalMoney").String()
 		payUrl:="https:"+gjson.Get(body,"pcUrl").String()
 		log.Println(fmt.Sprintf("抢购成功，订单号:%s, 总价:%s, 电脑端付款链接:%s",orderId,totalMoney,payUrl))
-		if this.conf.Read("messenger","enable")=="true" && this.conf.Read("messenger","type")=="smtp" {
-			email:=service.NerEmail(this.conf)
-			_=email.SendMail([]string{this.conf.Read("messenger","email")},"茅台抢购通知",fmt.Sprintf("抢购成功，订单号:%s, 总价:%s, 电脑端付款链接:%s",orderId,totalMoney,payUrl))
-		}
+		_=service.SendMessage(this.conf,"茅台抢购通知",fmt.Sprintf("抢购成功，订单号:%s, 总价:%s, 电脑端付款链接:%s",orderId,totalMoney,payUrl))
 		return true
 	}else{
 		log.Println("抢购失败，返回信息:"+body)
-		if this.conf.Read("messenger","enable")=="true" && this.conf.Read("messenger","type")=="smtp" {
-			email:=service.NerEmail(this.conf)
-			_=email.SendMail([]string{this.conf.Read("messenger","email")},"茅台抢购通知","抢购失败，返回信息:"+body)
-		}
+		_=service.SendMessage(this.conf,"茅台抢购通知","抢购失败，返回信息:"+body)
 		return false
 	}
 }
