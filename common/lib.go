@@ -2,8 +2,13 @@ package common
 
 import (
 	"bytes"
+	"fmt"
+	"github.com/makiuchi-d/gozxing"
+	"github.com/makiuchi-d/gozxing/qrcode"
+	goQrcode "github.com/skip2/go-qrcode"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
+	"image"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -46,7 +51,7 @@ func Utf8ToGbk(s []byte) ([]byte, error) {
 }
 
 func NewRandStr(length int) string {
-	s:=[]string{
+	s := []string{
 		"a", "b", "c", "d", "e", "f",
 		"g", "h", "i", "j", "k", "l",
 		"m", "n", "o", "p", "q", "r",
@@ -57,20 +62,20 @@ func NewRandStr(length int) string {
 		"Q", "R", "S", "T", "U", "V",
 		"W", "X", "Y", "Z",
 	}
-	str:=""
-	for i:=1;i<=length;i++  {
+	str := ""
+	for i := 1; i <= length; i++ {
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		str+=s[r.Intn(len(s)-1)]
+		str += s[r.Intn(len(s)-1)]
 	}
 	return str
 }
 
-func Substr(s string,start,end int) string {
-	strRune:=[]rune(s)
-	if start==-1 {
+func Substr(s string, start, end int) string {
+	strRune := []rune(s)
+	if start == -1 {
 		return string(strRune[:end])
 	}
-	if end==-1 {
+	if end == -1 {
 		return string(strRune[start:])
 	}
 	return string(strRune[start:end])
@@ -95,17 +100,22 @@ func Exists(path string) bool {
 	return true
 }
 
-func OpenImage(file string)  {
-	if runtime.GOOS=="windows" {
-		cmd:=exec.Command("start",file)
-		_=cmd.Start()
+func OpenImage(qrPath string) {
+	if runtime.GOOS == "windows" {//windows
+		cmd := exec.Command("cmd", "/k", "start", qrPath)
+		_ = cmd.Start()
+	}else if runtime.GOOS == "darwin" {//Macos
+		cmd := exec.Command("open", qrPath)
+		_ = cmd.Start()
 	}else{
-		if runtime.GOOS=="linux" {
-			cmd:=exec.Command("eog",file)
-			_=cmd.Start()
-		}else{
-			cmd:=exec.Command("open",file)
-			_=cmd.Start()
-		}
+		//linux或者其他系统
+		file, _ := os.Open(qrPath)
+		img, _, _ := image.Decode(file)
+		bmp, _ := gozxing.NewBinaryBitmapFromImage(img)
+		qrReader := qrcode.NewQRCodeReader()
+		res, _ := qrReader.Decode(bmp, nil)
+		//输出控制台
+		qr, _ := goQrcode.New(res.String(), goQrcode.High)
+		fmt.Println(qr.ToSmallString(false))
 	}
 }
