@@ -1,5 +1,8 @@
 helloworld
 =======
+
+### 不定时开放群链接：https://t.me/joinchat/GsDnhtkdKJ4nbwJh
+
 > ⚠ 此项目是[python jd_seckill](https://github.com/huanghyw/jd_seckill) 的go版本实现，旨在降低使用门栏和相互学习而创建。
 
 **go版本的jd_seckill，京东抢茅台神器，支持跨平台，使用者请在发布页下载可执行文件，欢迎pr。**
@@ -117,6 +120,22 @@ jd_seckill version
 
 (8)通知配置
 > 目前支持email，wechat，dingtalk，具体可查看配置文件
+
+## Linux 无图形界面获取 eid 与 fp 方法参考
+(1) 安装无头 chrome
+```shell
+sudo apt install ./google-chrome-stable_current_amd64.deb
+sudo apt-get -y install xorg xvfb gtk2-engines-pixbuf
+sudo apt-get -y install dbus-x11 xfonts-base xfonts-100dpi xfonts-75dpi xfonts-cyrillic xfonts-scalable
+sudo apt-get install -y xvfb
+
+Xvfb -ac :99 -screen 0 1280x1024x16 & export DISPLAY=:99
+```
+(2) 执行获取 eid 与 fp
+```shell
+#参数--good_url商品链接必须设置，链接地址是一个可以加入购物车的商品
+jd_seckill jdTdudfp --good_url https://item.jd.com/100007959916.html
+```
 
 ## 感谢
 ##### 非常感谢原作者 https://github.com/zhou-xiaojun/jd_mask 提供的代码
